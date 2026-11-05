@@ -1,23 +1,70 @@
-import { Router } from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { User } from '../models/index.js';
-const router = Router();
-const issueToken = user => jwt.sign({ id: user._id, name: user.name, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
-router.post('/register', async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-    if (!name?.trim() || !email || !password || password.length < 8) return res.status(400).json({ message: 'Enter your name, email, and a password of at least 8 characters.' });
-    if (await User.exists({ email })) return res.status(409).json({ message: 'An account with this email already exists.' });
-    const user = await User.create({ name: name.trim(), email, password: await bcrypt.hash(password, 12) });
-    res.status(201).json({ token: issueToken(user), user: { id: user._id, name: user.name, email: user.email, role: user.role } });
-  } catch (e) { res.status(500).json({ message: 'Could not create account.' }); }
-});
-router.post('/login', async (req, res) => {
-  try {
-    const user = await User.findOne({ email: req.body.email?.toLowerCase() });
-    if (!user || !(await bcrypt.compare(req.body.password || '', user.password))) return res.status(401).json({ message: 'Email or password is incorrect.' });
-    res.json({ token: issueToken(user), user: { id: user._id, name: user.name, email: user.email, role: user.role } });
-  } catch { res.status(500).json({ message: 'Unable to sign in right now.' }); }
-});
-export default router;
+import mongoose from 'mongoose';
+
+const options = { timestamps: true };
+
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password: { type: String, required: true },
+  role: { type: String, enum: ['admin', 'doctor', 'receptionist', 'patient'], default: 'admin' },
+}, options);
+
+const patientSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, lowercase: true, trim: true },
+  phone: String,
+  age: Number,
+  gender: { type: String, enum: ['Male', 'Female', 'Other'], default: 'Other' },
+  bloodGroup: String,
+  condition: String,
+  status: { type: String, enum: ['Active', 'Discharged', 'Critical'], default: 'Active' },
+  address: String,
+  room: String,
+}, options);
+
+const doctorSchema = new mongoose.Schema({
+  name: { type: String, required: true, trim: true },
+  email: { type: String, lowercase: true, trim: true },
+  phone: String,
+  specialty: { type: String, required: true },
+  experience: Number,
+  status: { type: String, enum: ['Available', 'On duty', 'Off duty'], default: 'Available' },
+  fee: Number,
+  department: String,
+}, options);
+
+const appointmentSchema = new mongoose.Schema({
+  patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient' },
+  doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
+  patientName: { type: String, required: true },
+  doctorName: { type: String, required: true },
+  date: { type: Date, required: true },
+  time: String,
+  type: { type: String, default: 'Consultation' },
+  status: { type: String, enum: ['Scheduled', 'Completed', 'Cancelled'], default: 'Scheduled' },
+  notes: String,
+}, options);
+
+const invoiceSchema = new mongoose.Schema({
+  invoiceId: { type: String, required: true, unique: true },
+  patient: { type: String, required: true },
+  date: { type: Date, required: true },
+  amount: { type: Number, required: true },
+  status: { type: String, enum: ['Paid', 'Pending', 'Overdue'], default: 'Pending' },
+}, options);
+
+const prescriptionSchema = new mongoose.Schema({
+  patient: { type: String, required: true },
+  doctor: { type: String, required: true },
+  medicine: { type: String, required: true },
+  dosage: String,
+  notes: String,
+  date: { type: Date, required: true },
+}, options);
+
+export const User = mongoose.model('User', userSchema);
+export const Patient = mongoose.model('Patient', patientSchema);
+export const Doctor = mongoose.model('Doctor', doctorSchema);
+export const Appointment = mongoose.model('Appointment', appointmentSchema);
+export const Invoice = mongoose.model('Invoice', invoiceSchema);
+export const Prescription = mongoose.model('Prescription', prescriptionSchema);
